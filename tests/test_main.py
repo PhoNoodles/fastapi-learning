@@ -199,3 +199,18 @@ def test_delete_item() -> None:
     assert get_response.json() == {
         "detail": f"Item {item_id} not found"
     }
+
+def test_read_missing_item() -> None:
+    missing_id = "550e8400-e29b-41d4-a716-446655440000"
+
+    response = client.get(f"/items/{missing_id}")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": f"Item {missing_id} not found"
+    }
+
+def test_reject_invalid_uuid() -> None:
+    response = client.get("/items/not-a-valid-uuid")
+
+    assert response.status_code == 422
