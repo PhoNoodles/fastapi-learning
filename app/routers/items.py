@@ -4,20 +4,30 @@ from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
+    HTTPException,
     Path,
     Query,
     Response,
     status,
+    Depends,
+    FastAPI,
 )
+
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.db_models import Item as ItemTable
 
 from app.models import (
     Item,
     ItemActionResponse,
     ItemResponse,
     ItemUpdate,
+    Supplier,
 )
 from app.settings import settings
 from app.storage import find_item, items
+from app.settings import settings
+
 
 
 router = APIRouter(
@@ -25,29 +35,46 @@ router = APIRouter(
     tags=["Items"],
 )
 
+
+def to_item_response(db_item: ItemTable) -> ItemResponse:
+    return ItemResponse(
+        item_id=db_item.item_id,
+        name=db_item.name,
+        price=db_item.price,
+        quantity=db_item.quantity,
+        is_offer=db_item.is_offer,
+        supplier=Supplier(
+            name=db_item.supplier_name,
+            email=db_item.supplier_email,
+        ),
+        tags=db_item.tags,
+        created_at=db_item.created_at,
+        updated_at=db_item.updated_at,
+    )
+
 @router.post(
     "",
     response_model=ItemResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_item(item: Item) -> ItemResponse:
-    current_time = datetime.now(timezone.utc)
-
-    new_item = ItemResponse(
-        item_id=uuid4(),
+def create_item(item: Item,
+                db: Annotated[Session, Depends(get_db)]
+                ) -> ItemResponse:
+    db_item = ItemTable(
         name=item.name,
         price=item.price,
         quantity=item.quantity,
         is_offer=item.is_offer,
-        supplier=item.supplier,
+        supplier_name=item.supplier.name,
+        supplier_email=item.supplier.email,
         tags=item.tags,
-        created_at=current_time,
-        updated_at=current_time,
     )
 
-    items.append(new_item)
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
 
-    return new_item
+    return to_item_response(db_item)
 
 @router.get(
     "",
@@ -95,8 +122,12 @@ def get_items(
 )
 def read_item(
     item_id: Annotated[UUID, Path()],
+    db: Annotated[Session, Depends(get_db)],
 ) -> ItemResponse:
-    return find_item(item_id)
+    db_item = db.get(ItemTable, item_id)
+    if db_item is None:
+        raise HTTPException(status_code=404, detail=f"Item {item_id} not found",)
+    return to_item_response(db_item)
 
 @router.put(
     "/{item_id}",
@@ -125,41 +156,60 @@ def update_item(
     "/{item_id}",
     response_model=ItemActionResponse,
 )
-def partially_update_item(
-    item_id: Annotated[UUID, Path()],
-    updated_item: ItemUpdate,
-) -> ItemActionResponse:
-    item = find_item(item_id)
+@router.patch("/{item_id}")
+def patch_item(
+    item_id: UUID,
+    item_update: ItemUpdate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    db_item = db.get(ItemTable, item_id)
 
-    for field in updated_item.model_fields_set:
-        value = getattr(updated_item, field)
-        setattr(item, field, value)
+    if db_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item {item_id} not found",
+        )
 
-    item.updated_at = datetime.now(timezone.utc)
-
-    return ItemActionResponse(
-        message="Item partially updated successfully",
-        item=item,
+    update_data = item_update.model_dump(
+        exclude_unset=True,
     )
 
+    for field, value in update_data.items():
+        if field == "supplier":
+            db_item.supplier_name = value["name"]
+            db_item.supplier_email = value["email"]
+        else:
+            setattr(db_item, field, value)
+
+    db.commit()
+    db.refresh(db_item)
+
+    return {
+        "message": "Item updated successfully",
+        "item": to_item_response(db_item),
+    }
 @router.delete(
     "/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@router.delete("/{item_id}", status_code=204)
 def delete_item(
-    item_id: Annotated[UUID, Path()],
+    item_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
 ) -> Response:
-    item = find_item(item_id)
-    items.remove(item)
+    db_item = db.get(ItemTable, item_id)
 
-    return Response(
-        status_code=status.HTTP_204_NO_CONTENT
-    )
+    if db_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item {item_id} not found",
+        )
 
-from fastapi import FastAPI
+    db.delete(db_item)
+    db.commit()
 
-from app.routers.items import router as items_router
-from app.settings import settings
+    return Response(status_code=204)
+
 
 
 app = FastAPI(
@@ -173,7 +223,4 @@ def read_root() -> dict[str, str]:
     return {
         "message": f"Welcome to {settings.app_name}"
     }
-
-
-app.include_router(items_router)
 

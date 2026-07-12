@@ -3,6 +3,10 @@ from fastapi import FastAPI
 from app.routers.items import router as items_router
 from app.settings import settings
 
+from app.database import Base, engine
+from app.db_models import Item
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.app_name,
