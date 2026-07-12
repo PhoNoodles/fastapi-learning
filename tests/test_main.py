@@ -1,9 +1,25 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.storage import items
 
 
 client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def clear_items():
+    items.clear()
+
+    yield
+
+    items.clear()
+
+def test_items_start_empty() -> None:
+    response = client.get("/items")
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_read_root() -> None:
