@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator, ConfigD
 from typing import Annotated
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
+from settings import settings
 
 def clean_tags(tags: list[str]) -> list[str]:
     cleaned_tags: list[str] = []
@@ -21,7 +22,9 @@ def clean_tags(tags: list[str]) -> list[str]:
     return cleaned_tags
 
 
-app = FastAPI()
+app = FastAPI(title = settings.app_name, 
+              debug = settings.debug
+              )
 
 class Supplier(BaseModel):
     name: Annotated[
@@ -180,8 +183,12 @@ def find_item_by_id(item_id: Annotated[UUID, Path(description="The ID of the ite
     raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
 
 @app.get("/")
-def read_root():
-    return {"Hello": "World"}
+def read_root() -> dict[str, str | bool | int]:
+    return {
+        "app_name": settings.app_name,
+        "debug": settings.debug,
+        "max_items": settings.max_items,
+    }
 
 @app.get("/items/{item_id}", response_model=ItemResponse)
 def read_item(item_id: Annotated[UUID, Path(description="The ID of the item")]):
