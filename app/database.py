@@ -1,13 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 from collections.abc import Generator
-
-
-DATABASE_URL = "sqlite:///./items.db"
+from app.settings import settings
 
 
 engine = create_engine(
-    DATABASE_URL,
+    settings.database_url,
     connect_args={"check_same_thread": False},
 )
 

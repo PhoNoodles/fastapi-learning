@@ -1,19 +1,53 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, StaticPool
+from sqlalchemy.orm import sessionmaker
+from collections.abc import Generator
 
+from app.database import Base, get_db
 from app.main import app
-from app.storage import items
+from app.settings import settings
+
+
+DATABASE_URL = "sqlite:///:memory:"
+
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+
+TestingSessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+)
+
+
+def override_get_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+app.dependency_overrides[get_db] = override_get_db
 
 
 client = TestClient(app)
 
+
+
 @pytest.fixture(autouse=True)
-def clear_items():
-    items.clear()
+def setup_database() -> Generator[None, None, None]:
+    Base.metadata.create_all(bind=engine)
 
     yield
 
-    items.clear()
+    Base.metadata.drop_all(bind=engine)
 
 def test_items_start_empty() -> None:
     response = client.get("/items")
