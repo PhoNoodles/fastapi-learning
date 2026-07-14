@@ -1,34 +1,33 @@
 # FastAPI Learning API
 
-A backend API project built while learning professional FastAPI development practices.
+A learning project built with FastAPI, SQLAlchemy, SQLite, pytest, authentication, and authorization.
 
-## What this project demonstrates
+## Features
 
-- Typed FastAPI endpoints
-- Pydantic request and response models
-- SQLite database integration
-- Query parameters and filtering
-- Validation and error handling
-- Unit and integration testing
-- Automatic Swagger API documentation
+- FastAPI CRUD routes
+- Pydantic request and response validation
+- SQLAlchemy ORM
+- SQLite persistence
+- Isolated pytest database tests
+- Request logging middleware
+- Process-time response headers
+- Request ID middleware
+- Bearer-token authentication
+- Role-based authorization
+- Ownership-based authorization
+- Admin access across users
 
-## Tech stack
+## Authorization Rules
 
-- Python
-- FastAPI
-- Pydantic
-- SQLAlchemy
-- SQLite
-- Pytest
+- Regular users can view only their own items
+- Owners can read, update, and delete their own items
+- Non-owners receive `403 Forbidden`
+- Admins can access all items
 
-## Running locally
+## Run Locally
 
 ```bash
-git clone https://github.com/PhoNoodles/fastapi-learning.git
-cd fastapi-learning
-
 python -m venv .venv
 source .venv/bin/activate
-
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+python -m pip install -r requirements.txt
+fastapi dev app/main.py
