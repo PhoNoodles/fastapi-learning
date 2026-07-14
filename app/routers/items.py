@@ -25,13 +25,13 @@ from app.models import (
     Supplier,
 )
 from app.settings import settings
-from app.settings import settings
-
+from app.auth import get_current_user, CurrentUser, require_admin
 
 
 router = APIRouter(
     prefix="/items",
     tags=["Items"],
+    dependencies=[Depends(get_current_user)],
 )
 
 
@@ -199,14 +199,12 @@ def patch_item(
         "message": "Item updated successfully",
         "item": to_item_response(db_item),
     }
-@router.delete(
-    "/{item_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-@router.delete("/{item_id}", status_code=204)
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_item(
     item_id: UUID,
     db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[CurrentUser, Depends(require_admin)],
 ) -> Response:
     db_item = db.get(ItemTable, item_id)
 
