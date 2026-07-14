@@ -13,4 +13,4 @@ venv/
 .vscode/
 
 # Operating system files
-.DS_Store
+.DS_Storeitems.db
