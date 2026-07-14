@@ -8,6 +8,13 @@ from app.database import Base, get_db
 from app.main import app
 from app.settings import settings
 
+USER_HEADERS = {
+    "Authorization": "Bearer secret-token"
+}
+
+ADMIN_HEADERS = {
+    "Authorization": "Bearer admin-token"
+}
 
 DATABASE_URL = "sqlite:///:memory:"
 
@@ -50,14 +57,14 @@ def setup_database() -> Generator[None, None, None]:
     Base.metadata.drop_all(bind=engine)
 
 def test_items_start_empty() -> None:
-    response = client.get("/items")
+    response = client.get("/items", headers=USER_HEADERS)
 
     assert response.status_code == 200
     assert response.json() == []
 
 
 def test_read_root() -> None:
-    response = client.get("/")
+    response = client.get("/", headers=USER_HEADERS)
 
     assert response.status_code == 200
     assert response.json() == {
@@ -82,6 +89,7 @@ def test_create_item() -> None:
                 "keyboard",
             ],
         },
+        headers=USER_HEADERS,
     )
 
     assert response.status_code == 201
@@ -107,6 +115,7 @@ def test_create_item_with_negative_price() -> None:
             },
             "tags": [],
         },
+        headers=USER_HEADERS,
     )
 
     assert response.status_code == 422
@@ -125,6 +134,7 @@ def test_offer_requires_tag() -> None:
             },
             "tags": [],
         },
+        headers=USER_HEADERS,
     )
 
     assert response.status_code == 422
@@ -143,6 +153,7 @@ def test_read_created_item() -> None:
             },
             "tags": ["keyboard"],
         },
+        headers=USER_HEADERS,
     )
 
     assert create_response.status_code == 201
@@ -150,7 +161,7 @@ def test_read_created_item() -> None:
     created_item = create_response.json()
     item_id = created_item["item_id"]
 
-    get_response = client.get(f"/items/{item_id}")
+    get_response = client.get(f"/items/{item_id}", headers=USER_HEADERS)
 
     assert get_response.status_code == 200
     assert get_response.json()["item_id"] == item_id
@@ -170,6 +181,7 @@ def test_patch_item() -> None:
             },
             "tags": ["office"],
         },
+        headers=USER_HEADERS,
     )
 
     assert create_response.status_code == 201
@@ -185,6 +197,7 @@ def test_patch_item() -> None:
             "price": 69.99,
             "quantity": 7,
         },
+        headers=USER_HEADERS,
     )
 
     assert patch_response.status_code == 200
@@ -216,18 +229,19 @@ def test_delete_item() -> None:
             },
             "tags": ["temporary"],
         },
+        headers=USER_HEADERS,
     )
 
     assert create_response.status_code == 201
 
     item_id = create_response.json()["item_id"]
 
-    delete_response = client.delete(f"/items/{item_id}")
+    delete_response = client.delete(f"/items/{item_id}", headers=ADMIN_HEADERS)
 
     assert delete_response.status_code == 204
     assert delete_response.content == b""
 
-    get_response = client.get(f"/items/{item_id}")
+    get_response = client.get(f"/items/{item_id}", headers=USER_HEADERS)
 
     assert get_response.status_code == 404
     assert get_response.json() == {
@@ -237,7 +251,7 @@ def test_delete_item() -> None:
 def test_read_missing_item() -> None:
     missing_id = "550e8400-e29b-41d4-a716-446655440000"
 
-    response = client.get(f"/items/{missing_id}")
+    response = client.get(f"/items/{missing_id}", headers=USER_HEADERS)
 
     assert response.status_code == 404
     assert response.json() == {
@@ -245,6 +259,66 @@ def test_read_missing_item() -> None:
     }
 
 def test_reject_invalid_uuid() -> None:
-    response = client.get("/items/not-a-valid-uuid")
+    response = client.get("/items/not-a-valid-uuid", headers=USER_HEADERS)
 
     assert response.status_code == 422
+
+def test_get_items_requires_authentication() -> None:
+    response = client.get("/items")
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "detail": "Invalid or missing token"
+    }
+
+def test_regular_user_cannot_delete_item() -> None:
+    create_response = client.post(
+        "/items",
+        json={
+            "name": "Protected Keyboard",
+            "price": 59.99,
+            "quantity": 3,
+            "is_offer": False,
+            "supplier": {
+                "name": "Tech Supply Co.",
+                "email": "sales@techsupply.com",
+            },
+        },
+        headers=USER_HEADERS,
+    )
+
+    assert create_response.status_code == 201
+
+    item_id = create_response.json()["item_id"]
+
+    delete_response = client.delete(f"/items/{item_id}", headers=USER_HEADERS)
+
+    assert delete_response.status_code == 403
+    assert delete_response.json() == {
+        "detail": "Admin privileges required"
+    }
+
+def test_admin_can_delete_item() -> None:
+    create_response = client.post(
+        "/items",
+        json={
+            "name": "Admin Keyboard",
+            "price": 99.99,
+            "quantity": 5,
+            "is_offer": False,
+            "supplier": {
+                "name": "Tech Supply Co.",
+                "email": "sales@techsupply.com",
+            },
+        },
+        headers=ADMIN_HEADERS,
+    )
+
+    assert create_response.status_code == 201
+
+    item_id = create_response.json()["item_id"]
+
+    delete_response = client.delete(f"/items/{item_id}", headers=ADMIN_HEADERS)
+
+    assert delete_response.status_code == 204
+    assert delete_response.content == b""
