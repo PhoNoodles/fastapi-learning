@@ -12,6 +12,9 @@ USER_HEADERS = {
     "Authorization": "Bearer secret-token"
 }
 
+SECOND_USER_HEADERS = {
+    "Authorization": "Bearer second-user-token"
+}
 ADMIN_HEADERS = {
     "Authorization": "Bearer admin-token"
 }
@@ -271,33 +274,6 @@ def test_get_items_requires_authentication() -> None:
         "detail": "Invalid or missing token"
     }
 
-def test_regular_user_cannot_delete_item() -> None:
-    create_response = client.post(
-        "/items",
-        json={
-            "name": "Protected Keyboard",
-            "price": 59.99,
-            "quantity": 3,
-            "is_offer": False,
-            "supplier": {
-                "name": "Tech Supply Co.",
-                "email": "sales@techsupply.com",
-            },
-        },
-        headers=USER_HEADERS,
-    )
-
-    assert create_response.status_code == 201
-
-    item_id = create_response.json()["item_id"]
-
-    delete_response = client.delete(f"/items/{item_id}", headers=USER_HEADERS)
-
-    assert delete_response.status_code == 403
-    assert delete_response.json() == {
-        "detail": "Admin privileges required"
-    }
-
 def test_admin_can_delete_item() -> None:
     create_response = client.post(
         "/items",
@@ -322,3 +298,240 @@ def test_admin_can_delete_item() -> None:
 
     assert delete_response.status_code == 204
     assert delete_response.content == b""
+
+def test_owner_can_patch_item() -> None:
+    create_response = client.post(
+        "/items",
+        json={
+            "name": "Owner Keyboard",
+            "price": 79.99,
+            "quantity": 4,
+            "is_offer": False,
+            "supplier": {
+                "name": "Tech Supply Co.",
+                "email": "supplier@example.com",
+            },
+            "tags": ["owner"],
+        },
+        headers=USER_HEADERS,
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    patch_response = client.patch(
+        f"/items/{item_id}",
+        json={
+            "price": 69.99
+        },
+        headers=USER_HEADERS,
+    )
+
+    assert patch_response.status_code == 200
+    assert patch_response.json()["item"]["price"] == 69.99
+
+def test_non_owner_cannot_patch_item() -> None:
+    create_response = client.post(
+        "/items",
+        json={
+            "name": "Non-Owner Keyboard",
+            "price": 89.99,
+            "quantity": 3,
+            "is_offer": False,
+            "supplier": {
+                "name": "Tech Supply Co.",
+                "email": "supplier@example.com",
+            },
+            "tags": ["non-owner"],
+        },
+        headers=USER_HEADERS,
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    patch_response = client.patch(
+        f"/items/{item_id}",
+        json={
+            "price": 79.99
+        },
+        headers=SECOND_USER_HEADERS,
+    )
+
+    assert patch_response.status_code == 403
+    assert patch_response.json() == {
+        "detail": "You do not have permission to access this item."
+    }
+
+def test_admin_can_patch_another_user_item() -> None:
+    create_response = client.post(
+        "/items",
+        json={
+            "name": "Admin Patch Keyboard",
+            "price": 99.99,
+            "quantity": 2,
+            "is_offer": False,
+            "supplier": {
+                "name": "Tech Supply Co.",
+                "email": "supplier@example.com",
+            },
+            "tags": ["admin-patch"],
+        },
+        headers=USER_HEADERS,
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    patch_response = client.patch(
+        f"/items/{item_id}",
+        json={
+            "price": 89.99
+        },
+        headers=ADMIN_HEADERS,
+    )
+
+    assert patch_response.status_code == 200
+    assert patch_response.json()["item"]["price"] == 89.99
+
+def test_non_owner_cannot_delete_item() -> None:
+    create_response = client.post(
+        "/items",
+        json={
+            "name": "Non-Owner Delete Keyboard",
+            "price": 79.99,
+            "quantity": 4,
+            "is_offer": False,
+            "supplier": {
+                "name": "Tech Supply Co.",
+                "email": "supplier@example.com",
+            },
+            "tags": ["non-owner-delete"],
+        },
+        headers=USER_HEADERS,
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    delete_response = client.delete(
+        f"/items/{item_id}",
+        headers=SECOND_USER_HEADERS,
+    )
+
+    assert delete_response.status_code == 403
+    assert delete_response.json() == {
+        "detail": "You do not have permission to access this item."
+    }
+
+def test_regular_user_only_sees_own_items() -> None:
+    client.post(
+        "/items",
+        headers=USER_HEADERS,
+        json={
+            "name": "Rio Item",
+            "price": 20,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["rio"],
+        },
+    )
+
+    client.post(
+        "/items",
+        headers=SECOND_USER_HEADERS,
+        json={
+            "name": "Alex Item",
+            "price": 30,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["alex"],
+        },
+    )
+
+    response = client.get(
+        "/items",
+        headers=USER_HEADERS,
+    )
+
+    assert response.status_code == 200
+
+    response_data = response.json()
+
+    assert len(response_data) == 1
+    assert response_data[0]["name"] == "Rio Item"
+    assert response_data[0]["owner_username"] == "rio"
+
+def test_admin_sees_all_items() -> None:
+    client.post(
+        "/items",
+        headers=USER_HEADERS,
+        json={
+            "name": "Rio Item",
+            "price": 20,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["rio"],
+        },
+    )
+
+    client.post(
+        "/items",
+        headers=SECOND_USER_HEADERS,
+        json={
+            "name": "Alex Item",
+            "price": 30,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["alex"],
+        },
+    )
+
+    response = client.get(
+        "/items",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+def test_non_owner_cannot_read_item() -> None:
+    create_response = client.post(
+        "/items",
+        headers=USER_HEADERS,
+        json={
+            "name": "Rio Private Item",
+            "price": 25,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["private"],
+        },
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    response = client.get(
+        f"/items/{item_id}",
+        headers=SECOND_USER_HEADERS,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "You do not have permission to access this item."
+    }

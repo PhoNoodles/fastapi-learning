@@ -45,6 +45,11 @@ class Item(Base):
         nullable=False,
     )
 
+    owner_username: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
     tags: Mapped[list[str]] = mapped_column(
         JSON,
         default=list,

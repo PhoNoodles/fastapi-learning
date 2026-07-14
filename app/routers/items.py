@@ -46,10 +46,23 @@ def to_item_response(db_item: ItemTable) -> ItemResponse:
             name=db_item.supplier_name,
             email=db_item.supplier_email,
         ),
+        owner_username=db_item.owner_username,
         tags=db_item.tags,
         created_at=db_item.created_at,
         updated_at=db_item.updated_at,
     )
+
+def verify_item_access(db_item: ItemTable, current_user: CurrentUser) -> None:
+    is_owner = (
+        db_item.owner_username == current_user["username"]
+    )
+    is_admin = current_user["role"] == "admin"
+
+    if not is_owner and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this item.",
+        )
 
 @router.post(
     "",
@@ -57,8 +70,9 @@ def to_item_response(db_item: ItemTable) -> ItemResponse:
     status_code=status.HTTP_201_CREATED,
 )
 def create_item(item: Item,
-                db: Annotated[Session, Depends(get_db)]
-                ) -> ItemResponse:
+                db: Annotated[Session, Depends(get_db)],
+                current_user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> ItemResponse:
     db_item = ItemTable(
         name=item.name,
         price=item.price,
@@ -66,6 +80,7 @@ def create_item(item: Item,
         is_offer=item.is_offer,
         supplier_name=item.supplier.name,
         supplier_email=item.supplier.email,
+        owner_username=current_user["username"],
         tags=item.tags,
     )
 
@@ -81,6 +96,7 @@ def create_item(item: Item,
 )
 def get_items(
     db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
     search: Annotated[
         str | None,
         Query(min_length=1, max_length=50),
@@ -94,29 +110,30 @@ def get_items(
         Query(),
     ] = False,
 ) -> list[ItemResponse]:
-    db_items = db.query(ItemTable).all()
+    query = db.query(ItemTable)
+
+    if current_user["role"] != "admin":
+        query = query.filter(ItemTable.owner_username == current_user["username"])
+
+    db_items = query.all()
     filtered_items = [
         to_item_response(item)
         for item in db_items
     ]
 
     if search is not None:
-        search_results: list[ItemResponse] = []
+        filtered_items = [
+            item
+            for item in filtered_items
+            if search.lower() in item.name.lower()
+        ]
 
-        for item in filtered_items:
-            if search.lower() in item.name.lower():
-                search_results.append(item)
-
-        filtered_items = search_results
-
-    if offer_only is True:
-        offer_results: list[ItemResponse] = []
-
-        for item in filtered_items:
-            if item.is_offer is True:
-                offer_results.append(item)
-
-        filtered_items = offer_results
+    if offer_only:
+        filtered_items = [
+            item
+            for item in filtered_items
+            if item.is_offer
+        ]
 
     return filtered_items[:limit]
 
@@ -127,10 +144,12 @@ def get_items(
 def read_item(
     item_id: Annotated[UUID, Path()],
     db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> ItemResponse:
     db_item = db.get(ItemTable, item_id)
     if db_item is None:
         raise HTTPException(status_code=404, detail=f"Item {item_id} not found",)
+    verify_item_access(db_item, current_user)
     return to_item_response(db_item)
 
 @router.put(
@@ -172,6 +191,7 @@ def patch_item(
     item_id: UUID,
     item_update: ItemUpdate,
     db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     db_item = db.get(ItemTable, item_id)
 
@@ -180,6 +200,8 @@ def patch_item(
             status_code=404,
             detail=f"Item {item_id} not found",
         )
+
+    verify_item_access(db_item, current_user)
 
     update_data = item_update.model_dump(
         exclude_unset=True,
@@ -204,7 +226,7 @@ def patch_item(
 def delete_item(
     item_id: UUID,
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[CurrentUser, Depends(require_admin)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> Response:
     db_item = db.get(ItemTable, item_id)
 
@@ -213,6 +235,8 @@ def delete_item(
             status_code=404,
             detail=f"Item {item_id} not found",
         )
+    
+    verify_item_access(db_item, current_user)
 
     db.delete(db_item)
     db.commit()

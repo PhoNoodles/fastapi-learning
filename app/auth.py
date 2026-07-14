@@ -27,6 +27,12 @@ def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None,
             "role": "user"
         }
     
+    if credentials.credentials == "second-user-token":
+        return {
+            "username": "alex",
+            "role": "user"
+        }
+    
     if credentials.credentials == "admin-token":
         return {
             "username": "admin",

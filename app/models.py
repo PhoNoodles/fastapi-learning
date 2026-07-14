@@ -141,6 +141,7 @@ class ItemResponse(BaseModel):
     is_offer: bool | None = None
     supplier: Supplier
     tags: list[str]
+    owner_username: str
     created_at: datetime
     updated_at: datetime
 
