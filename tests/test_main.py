@@ -535,3 +535,90 @@ def test_non_owner_cannot_read_item() -> None:
     assert response.json() == {
         "detail": "You do not have permission to access this item."
     }
+
+def test_admin_can_read_item() -> None:
+    create_response = client.post(
+        "/items",
+        headers=USER_HEADERS,
+        json={
+            "name": "Rio Private Item",
+            "price": 25,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["private"],
+        },
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    response = client.get(
+        f"/items/{item_id}",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["name"] == "Rio Private Item"
+    assert response_data["owner_username"] == "rio"
+
+def test_owner_can_read_item() -> None:
+    create_response = client.post(
+        "/items",
+        headers=USER_HEADERS,
+        json={
+            "name": "Rio Private Item",
+            "price": 25,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["private"],
+        },
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    response = client.get(
+        f"/items/{item_id}",
+        headers=USER_HEADERS,
+    )
+
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["name"] == "Rio Private Item"
+    assert response_data["owner_username"] == "rio"
+
+def test_admin_can_read_own_item() -> None:
+    create_response = client.post(
+        "/items",
+        headers=ADMIN_HEADERS,
+        json={
+            "name": "Admin Private Item",
+            "price": 25,
+            "quantity": 1,
+            "is_offer": False,
+            "supplier": {
+                "name": "Supplier",
+                "email": "supplier@example.com",
+            },
+            "tags": ["private"],
+        },
+    )
+
+    item_id = create_response.json()["item_id"]
+
+    response = client.get(
+        f"/items/{item_id}",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["name"] == "Admin Private Item"
+    assert response_data["owner_username"] == "admin"
